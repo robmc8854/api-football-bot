@@ -1,34 +1,25 @@
 # syntax=docker/dockerfile:1.6
 
 ########################
-# 1) Install deps
+# 1) deps
 ########################
 FROM node:20-alpine AS deps
 WORKDIR /app
-
-# Keep layers stable: copy only lock + package first
 COPY package*.json ./
-
-# Install ALL deps (dev deps required for vite build)
+# Dev deps are needed for Vite build
 RUN npm ci --include=dev --no-audit --no-fund
 
 ########################
-# 2) Build
+# 2) build
 ########################
 FROM node:20-alpine AS build
 WORKDIR /app
-
-# Bring node_modules from deps stage
 COPY --from=deps /app/node_modules ./node_modules
-
-# Now copy the rest of the app
 COPY . .
-
-# Build static assets
 RUN npm run build
 
 ########################
-# 3) Runtime (serve dist)
+# 3) runner (serve dist)
 ########################
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -39,8 +30,7 @@ ENV PORT=3000
 COPY --from=build /app/dist ./dist
 COPY server.js package*.json ./
 
-# Keep runtime image lean (optional)
-# Remove dev scripts/devDeps entries from package.json so npm start is safe
+# Trim dev stuff from runtime (optional)
 RUN npm pkg delete scripts.dev || true \
  && npm pkg delete devDependencies || true
 
