@@ -6,7 +6,7 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-# Dev deps are needed for Vite build
+# Dev deps needed for Vite build
 RUN npm ci --include=dev --no-audit --no-fund
 
 ########################
@@ -19,7 +19,7 @@ COPY . .
 RUN npm run build
 
 ########################
-# 3) runner (serve dist)
+# 3) runtime (serve dist)
 ########################
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -30,7 +30,7 @@ ENV PORT=3000
 COPY --from=build /app/dist ./dist
 COPY server.js package*.json ./
 
-# Trim dev stuff from runtime (optional)
+# Trim dev-only entries (optional)
 RUN npm pkg delete scripts.dev || true \
  && npm pkg delete devDependencies || true
 
