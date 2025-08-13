@@ -1,4 +1,3 @@
-// server.js
 import express from 'express';
 import compression from 'compression';
 import path from 'path';
