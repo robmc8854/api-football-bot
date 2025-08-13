@@ -1,4 +1,3 @@
-// server.js
 import express from 'express';
 import compression from 'compression';
 import path from 'path';
@@ -34,7 +33,7 @@ if (fs.existsSync(DIST)) {
   app.get('*', (_req, res) =>
     res
       .status(200)
-      .send('<pre>dist/ not found. Did the build run? (Railway should run `npm run build`)</pre>')
+      .send('<pre>dist/ not found. Build didn’t run. Railway should run `npm run build`.</pre>')
   );
 }
 
