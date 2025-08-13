@@ -30,7 +30,7 @@ const SportMonkPredictionBot = () => {
   const [valueBets, setValueBets] = useState([]);
   const [selectedView, setSelectedView] = useState('predictions'); // predictions, value-bets, analytics
 
-  // --- Helper sub-calculations ---
+  // ---------- helpers ----------
   const calculateH2HFactor = (h2hFixtures, homeTeamId) => {
     if (!h2hFixtures || h2hFixtures.length === 0) return 0;
     const recentH2H = h2hFixtures.slice(-5);
@@ -51,15 +51,9 @@ const SportMonkPredictionBot = () => {
   const calculateWeatherImpact = (weather) => {
     if (!weather) return 1;
     let factor = 1;
-    if (weather.temperature_celsius < 5 || weather.temperature_celsius > 35) {
-      factor *= 0.95; // Extreme temperatures slightly favor defensive play
-    }
-    if (weather.wind_speed > 20) {
-      factor *= 0.9; // High winds affect passing game
-    }
-    if (weather.weather_report?.description?.toLowerCase().includes('rain')) {
-      factor *= 0.85; // Rain typically leads to more unpredictable games
-    }
+    if (weather.temperature_celsius < 5 || weather.temperature_celsius > 35) factor *= 0.95;
+    if (weather.wind_speed > 20) factor *= 0.9;
+    if (weather.weather_report?.description?.toLowerCase().includes('rain')) factor *= 0.85;
     return factor;
   };
 
@@ -71,17 +65,14 @@ const SportMonkPredictionBot = () => {
     return Math.min(0.95, Math.max(0.1, decisiveness * 0.7 + dataReliability * 0.3));
   };
 
-  // --- Main prediction model (logic kept) ---
+  // ---------- model ----------
   const calculateAdvancedPrediction = (fixture, additionalData = {}) => {
     const homeTeam = fixture.participants?.[0];
     const awayTeam = fixture.participants?.[1];
-    if (!homeTeam || !awayTeam) {
-      return null;
-    }
+    if (!homeTeam || !awayTeam) return null;
 
     const { standings = [], headToHead = [], weather = null, form = {} } = additionalData;
 
-    // Base team strengths from standings
     const homeStanding = standings.find((s) => s.participant_id === homeTeam.id) || {};
     const awayStanding = standings.find((s) => s.participant_id === awayTeam.id) || {};
 
@@ -90,63 +81,46 @@ const SportMonkPredictionBot = () => {
     const homePoints = homeStanding.points || 20;
     const awayPoints = awayStanding.points || 20;
 
-    // Form analysis (last 5 games)
     const homeFormScore = form[homeTeam.id]?.formScore || 0.5;
     const awayFormScore = form[awayTeam.id]?.formScore || 0.5;
 
-    // Head-to-head factor
     const h2hFactor = calculateH2HFactor(headToHead, homeTeam.id);
-
-    // Weather impact
     const weatherFactor = calculateWeatherImpact(weather);
-
-    // Home advantage
     const homeAdvantage = 0.1;
 
-    // Calculate base probabilities
     let homeWinProb = 0.4 + homeAdvantage;
     let awayWinProb = 0.3;
     let drawProb = 0.3;
 
-    // Adjust based on league position
     const positionDiff = (awayPosition - homePosition) / 20;
     homeWinProb += positionDiff * 0.2;
     awayWinProb -= positionDiff * 0.2;
 
-    // Adjust based on points
     const pointsDiff = (homePoints - awayPoints) / 50;
     homeWinProb += pointsDiff * 0.15;
     awayWinProb -= pointsDiff * 0.15;
 
-    // Apply form
     homeWinProb += (homeFormScore - 0.5) * 0.2;
     awayWinProb += (awayFormScore - 0.5) * 0.2;
 
-    // Apply head-to-head
     homeWinProb += h2hFactor * 0.1;
     awayWinProb -= h2hFactor * 0.1;
 
-    // Apply weather
     homeWinProb *= weatherFactor;
 
-    // Normalize probabilities
     const total = homeWinProb + awayWinProb + drawProb;
     homeWinProb /= total;
     awayWinProb /= total;
     drawProb /= total;
 
-    // Expected goals (simple)
     const homeXG = Math.max(0.5, 1.5 + (homeFormScore - awayFormScore) * 2);
     const awayXG = Math.max(0.5, 1.2 + (awayFormScore - homeFormScore) * 2);
 
-    // Over/Under 2.5 goals
     const totalXG = homeXG + awayXG;
     const over25Prob = totalXG > 2.5 ? 0.6 + (totalXG - 2.5) * 0.15 : 0.4 - (2.5 - totalXG) * 0.15;
 
-    // BTTS
     const bttsProb = Math.min(0.9, Math.max(0.1, (homeXG * awayXG) / 4));
 
-    // Confidence
     const confidence = calculateConfidence({
       homeWinProb,
       awayWinProb,
@@ -188,7 +162,7 @@ const SportMonkPredictionBot = () => {
     };
   };
 
-  // --- API helper ---
+  // ---------- API helper ----------
   const makeAPICall = async (endpoint, params = {}) => {
     if (!apiKey && endpoint !== 'demo') {
       return getDemoData(endpoint);
@@ -208,7 +182,7 @@ const SportMonkPredictionBot = () => {
     }
   };
 
-  // --- Fetchers ---
+  // ---------- fetchers ----------
   const fetchLeagues = async () => {
     const data = await makeAPICall('football/leagues', {
       include: 'country',
@@ -234,7 +208,6 @@ const SportMonkPredictionBot = () => {
   const fetchStandings = async (leagueId) => {
     if (!leagueId) return;
     try {
-      // Get current season for the league first
       const seasonsData = await makeAPICall(`football/seasons`, {
         'filter[league_id]': leagueId,
         include: 'league'
@@ -269,15 +242,12 @@ const SportMonkPredictionBot = () => {
   };
 
   const fetchInjuries = async (teamIds) => {
-    // Demo only — SportMonks doesn't expose a simple injuries endpoint
     const injuryData = {};
     teamIds.forEach((teamId) => {
       const hasInjuries = Math.random() > 0.7;
-      if (hasInjuries) {
-        injuryData[teamId] = [{ player_id: Math.floor(Math.random() * 1000), severity: 'minor' }];
-      } else {
-        injuryData[teamId] = [];
-      }
+      injuryData[teamId] = hasInjuries
+        ? [{ player_id: Math.floor(Math.random() * 1000), severity: 'minor' }]
+        : [];
     });
     setInjuries(injuryData);
   };
@@ -297,17 +267,16 @@ const SportMonkPredictionBot = () => {
     const formData = {};
     for (const teamId of teamIds) {
       try {
-        // Get last 5 fixtures for each team (demo range)
         const data = await makeAPICall(
           `football/fixtures/between/2024-01-01/2024-12-31/${teamId}`,
           { include: 'participants,scores', per_page: 5 }
         );
-        const arr = data.data || [];
+        const fixturesArr = data.data || [];
         let wins = 0,
           draws = 0,
           losses = 0;
 
-        arr.forEach((fixture) => {
+        fixturesArr.forEach((fixture) => {
           const teamScore =
             fixture.scores?.find((s) => s.participant_id === teamId)?.score?.total || 0;
           const opponentScore =
@@ -336,44 +305,7 @@ const SportMonkPredictionBot = () => {
     setTeamForm(formData);
   };
 
-  // --- Player impact analysis (demo) ---
-  const analyzePlayerImpact = (teamSquadsObj, injuriesObj) => {
-    const impact = {};
-    Object.keys(teamSquadsObj).forEach((teamId) => {
-      const squad = teamSquadsObj[teamId] || [];
-      const teamInjuries = injuriesObj[teamId] || [];
-
-      let offensiveImpact = 0;
-      let defensiveImpact = 0;
-
-      teamInjuries.forEach((injury) => {
-        const player = squad.find((p) => p.id === injury.player_id);
-        if (player) {
-          const posName = player.position?.name || '';
-          if (posName.includes('Forward') || posName.includes('Winger')) {
-            offensiveImpact += 0.15;
-          }
-          if (posName.includes('Defence') || posName.includes('Goalkeeper')) {
-            defensiveImpact += 0.12;
-          }
-          if (posName.includes('Midfield')) {
-            offensiveImpact += 0.08;
-            defensiveImpact += 0.08;
-          }
-        }
-      });
-
-      impact[teamId] = {
-        offensive: Math.min(0.4, offensiveImpact),
-        defensive: Math.min(0.4, defensiveImpact),
-        totalInjuries: teamInjuries.length
-      };
-    });
-
-    return impact;
-  };
-
-  // --- Value bet calculation (logic kept) ---
+  // ---------- value-bet calc ----------
   const calculateValueBets = (preds) => {
     return preds.map((match) => {
       if (!match.odds) return { ...match, valueBets: [] };
@@ -381,7 +313,6 @@ const SportMonkPredictionBot = () => {
       const valueBetsLocal = [];
       const pred = match.prediction;
 
-      // Match Winner market
       if (match.odds.match_winner) {
         const homeOdds = match.odds.match_winner.home;
         const drawOdds = match.odds.match_winner.draw;
@@ -406,7 +337,6 @@ const SportMonkPredictionBot = () => {
               edge: ((homePredicted - homeImplied) * 100).toFixed(1)
             });
           }
-
           if (drawPredicted > drawImplied * 1.05) {
             valueBetsLocal.push({
               market: 'Match Winner',
@@ -417,7 +347,6 @@ const SportMonkPredictionBot = () => {
               edge: ((drawPredicted - drawImplied) * 100).toFixed(1)
             });
           }
-
           if (awayPredicted > awayImplied * 1.05) {
             valueBetsLocal.push({
               market: 'Match Winner',
@@ -435,48 +364,37 @@ const SportMonkPredictionBot = () => {
     });
   };
 
-  // --- Generate predictions wrapper ---
+  // ---------- generate ----------
   const generatePredictions = async () => {
     if (!fixtures.length) return;
-
     setLoading(true);
 
-    // Unique team IDs
     const teamIds = [
       ...new Set(fixtures.flatMap((f) => (f.participants?.map((p) => p.id) || [])))
     ];
 
-    // Fetch additional data
-    const dataPromises = [];
-    if (selectedLeague) {
-      dataPromises.push(fetchStandings(selectedLeague));
-    }
+    const tasks = [];
+    if (selectedLeague) tasks.push(fetchStandings(selectedLeague));
     if (teamIds.length > 0) {
-      dataPromises.push(fetchTeamForm(teamIds));
-      dataPromises.push(fetchTeamSquads(teamIds));
-      dataPromises.push(fetchInjuries(teamIds));
+      tasks.push(fetchTeamForm(teamIds));
+      tasks.push(fetchTeamSquads(teamIds));
+      tasks.push(fetchInjuries(teamIds));
     }
-    await Promise.all(dataPromises);
+    await Promise.all(tasks);
 
-    // Calculate player impact (currently not directly used to adjust probs, but kept)
-    const playerImpact = analyzePlayerImpact(teamSquads, injuries);
-    void playerImpact; // keep logic placeholder
-
-    // Build predictions
     const newPredictions = fixtures
       .map((fixture) => {
         if (!fixture.participants || fixture.participants.length < 2) return null;
-        const pred = calculateAdvancedPrediction(fixture, {
+        const prediction = calculateAdvancedPrediction(fixture, {
           standings,
           headToHead: headToHeadData,
           weather: fixture.weatherreport,
           form: teamForm
         });
-        return { ...fixture, prediction: pred };
+        return { ...fixture, prediction };
       })
       .filter(Boolean);
 
-    // Value bets
     const predictionsWithValue = calculateValueBets(newPredictions);
     const allValueBets = predictionsWithValue
       .filter((p) => p.valueBets?.length > 0)
@@ -487,7 +405,7 @@ const SportMonkPredictionBot = () => {
     setLoading(false);
   };
 
-  // --- Demo data ---
+  // ---------- demo data ----------
   const getDemoData = (endpoint) => {
     if (endpoint.includes('leagues')) {
       return {
@@ -500,7 +418,6 @@ const SportMonkPredictionBot = () => {
         ]
       };
     }
-
     if (endpoint.includes('fixtures')) {
       return {
         data: [
@@ -520,15 +437,8 @@ const SportMonkPredictionBot = () => {
               weather_report: { description: 'Clear sky' }
             },
             odds: {
-              match_winner: {
-                home: 2.1,
-                draw: 3.4,
-                away: 3.8
-              },
-              over_under_25: {
-                over: 1.8,
-                under: 2.0
-              }
+              match_winner: { home: 2.1, draw: 3.4, away: 3.8 },
+              over_under_25: { over: 1.8, under: 2.0 }
             }
           },
           {
@@ -547,17 +457,12 @@ const SportMonkPredictionBot = () => {
               weather_report: { description: 'Light rain' }
             },
             odds: {
-              match_winner: {
-                home: 1.9,
-                draw: 3.6,
-                away: 4.2
-              }
+              match_winner: { home: 1.9, draw: 3.6, away: 4.2 }
             }
           }
         ]
       };
     }
-
     if (endpoint.includes('standings')) {
       return {
         data: [
@@ -572,24 +477,21 @@ const SportMonkPredictionBot = () => {
         ]
       };
     }
-
     return { data: [] };
   };
 
-  // --- Effects ---
+  // ---------- effects ----------
   useEffect(() => {
     fetchLeagues();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (selectedDate) {
-      fetchFixtures(selectedDate);
-    }
+    if (selectedDate) fetchFixtures(selectedDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
 
-  // --- Simple Predictions view ---
+  // ---------- views ----------
   const PredictionsView = ({ items }) => (
     <div className="space-y-4">
       {items.length === 0 ? (
@@ -600,20 +502,15 @@ const SportMonkPredictionBot = () => {
         </div>
       ) : (
         items.map((fx) => (
-          <div
-            key={fx.id}
-            className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-col gap-2"
-          >
+          <div key={fx.id} className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <div className="font-semibold">
                 {fx.participants?.[0]?.name} vs {fx.participants?.[1]?.name}
               </div>
               <div className="text-sm text-gray-400 flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                {fx.venue?.name || '—'}
+                <MapPin className="w-4 h-4" /> {fx.venue?.name || '—'}
                 <span className="mx-2">•</span>
-                <Calendar className="w-4 h-4" />
-                {new Date(fx.starting_at || fx.startingAt || Date.now()).toLocaleString()}
+                <Calendar className="w-4 h-4" /> {new Date(fx.starting_at || Date.now()).toLocaleString()}
               </div>
             </div>
 
@@ -652,7 +549,6 @@ const SportMonkPredictionBot = () => {
     </div>
   );
 
-  // --- Value Bets View Component (logic kept) ---
   const ValueBetsView = ({ valueBets }) => (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
@@ -665,8 +561,8 @@ const SportMonkPredictionBot = () => {
           <TrendingUp className="w-12 h-12 text-gray-500 mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2">No Value Bets Found</h3>
           <p className="text-gray-400">
-            No betting opportunities with sufficient edge detected in current fixtures. Try adjusting the
-            minimum edge threshold or check different dates.
+            No betting opportunities with sufficient edge detected in current fixtures.
+            Try adjusting the minimum edge threshold or check different dates.
           </p>
         </div>
       ) : (
@@ -674,10 +570,7 @@ const SportMonkPredictionBot = () => {
           {valueBets
             .sort((a, b) => parseFloat(b.edge) - parseFloat(a.edge))
             .map((vb, idx) => (
-              <div
-                key={idx}
-                className="bg-gradient-to-r from-green-900/20 to-green-800/20 border border-green-500/30 rounded-xl p-6"
-              >
+              <div key={idx} className="bg-gradient-to-r from-green-900/20 to-green-800/20 border border-green-500/30 rounded-xl p-6">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
                   <div className="mb-4 md:mb-0">
                     <h3 className="text-lg font-bold mb-1">
@@ -758,8 +651,8 @@ const SportMonkPredictionBot = () => {
 
                 <div className="mt-4 pt-4 border-t border-green-500/20">
                   <div className="text-xs text-gray-400">
-                    <strong>Disclaimer:</strong> Value betting requires careful bankroll management. Past performance
-                    doesn't guarantee future results. Bet responsibly.
+                    <strong>Disclaimer:</strong> Value betting requires careful bankroll management.
+                    Past performance doesn't guarantee future results. Bet responsibly.
                   </div>
                 </div>
               </div>
@@ -769,11 +662,9 @@ const SportMonkPredictionBot = () => {
     </div>
   );
 
-  // --- Analytics View (logic kept) ---
   const AnalyticsView = ({ predictions: preds, teamForm: tf, standings: st }) => {
     const getTeamStats = () => {
       const stats = {};
-
       preds.forEach((pred) => {
         pred.participants?.forEach((team) => {
           if (!stats[team.id]) {
@@ -787,10 +678,8 @@ const SportMonkPredictionBot = () => {
               points: st.find((s) => s.participant_id === team.id)?.points || 'N/A'
             };
           }
-
           stats[team.id].matches++;
           stats[team.id].avgConfidence += pred.prediction?.confidence || 0;
-
           const isHome = pred.participants[0]?.id === team.id;
           const winProb = isHome
             ? pred.prediction?.match_winner?.home || 0
@@ -798,13 +687,11 @@ const SportMonkPredictionBot = () => {
           stats[team.id].winProbability += winProb;
         });
       });
-
       Object.keys(stats).forEach((teamId) => {
         const team = stats[teamId];
         team.avgConfidence = Math.round(team.avgConfidence / team.matches);
         team.winProbability = Math.round(team.winProbability / team.matches);
       });
-
       return Object.values(stats);
     };
 
@@ -817,20 +704,18 @@ const SportMonkPredictionBot = () => {
           Team Analytics Dashboard
         </h2>
 
-        {/* Summary Cards */}
+        {/* Summary */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
             <div className="text-2xl font-bold text-blue-400">{preds.length}</div>
             <div className="text-sm text-gray-400">Total Matches Analyzed</div>
           </div>
-
           <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
             <div className="text-2xl font-bold text-green-400">
               {preds.filter((p) => (p.prediction?.confidence || 0) >= 70).length}
             </div>
             <div className="text-sm text-gray-400">High Confidence Predictions</div>
           </div>
-
           <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
             <div className="text-2xl font-bold text-yellow-400">
               {preds.length
@@ -842,14 +727,13 @@ const SportMonkPredictionBot = () => {
             </div>
             <div className="text-sm text-gray-400">Average Confidence</div>
           </div>
-
           <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
             <div className="text-2xl font-bold text-purple-400">{teamStats.length}</div>
             <div className="text-sm text-gray-400">Teams Analyzed</div>
           </div>
         </div>
 
-        {/* Team Performance Table */}
+        {/* Table */}
         <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
           <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-400" />
@@ -926,20 +810,18 @@ const SportMonkPredictionBot = () => {
           </div>
         </div>
 
-        {/* League Distribution */}
+        {/* League distribution */}
         <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
           <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
             <Globe className="w-5 h-5 text-green-400" />
             Match Distribution by League
           </h3>
-
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {Object.entries(
-              preds.reduce((lg, pred) => {
-                const lname = pred.league?.name || 'Unknown';
-                // eslint-disable-next-line no-param-reassign
-                lg[lname] = (lg[lname] || 0) + 1;
-                return lg;
+              preds.reduce((leagues, pred) => {
+                const league = pred.league?.name || 'Unknown';
+                leagues[league] = (leagues[league] || 0) + 1;
+                return leagues;
               }, {})
             ).map(([leagueName, count]) => (
               <div key={leagueName} className="bg-slate-900/50 rounded-lg p-4">
@@ -956,7 +838,7 @@ const SportMonkPredictionBot = () => {
     );
   };
 
-  // --- UI ---
+  // ---------- UI ----------
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white">
       <div className="container mx-auto px-4 py-8">
@@ -970,7 +852,7 @@ const SportMonkPredictionBot = () => {
           </p>
         </div>
 
-        {/* API Key / Filters */}
+        {/* Controls */}
         <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 mb-8 border border-slate-700">
           <div className="flex flex-col md:flex-row gap-4 items-end">
             <div className="flex-1">
@@ -1037,7 +919,7 @@ const SportMonkPredictionBot = () => {
           </div>
         </div>
 
-        {/* Generate Button */}
+        {/* Action */}
         <div className="text-center mb-8">
           <button
             onClick={generatePredictions}
@@ -1065,13 +947,12 @@ const SportMonkPredictionBot = () => {
           <AnalyticsView predictions={predictions} teamForm={teamForm} standings={standings} />
         )}
 
-        {/* Simple API Explorer (demo fixtures/leagues raw) */}
+        {/* Simple API Explorer (demo) */}
         {selectedView === 'endpoints' && (
           <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700 space-y-4">
             <h3 className="text-xl font-semibold mb-2">API Explorer (Demo)</h3>
             <div className="text-sm text-gray-300">
-              This demo mode shows static responses when API key is not provided. With a valid key, it will query
-              SportMonks live endpoints used by this page.
+              Without an API key this shows static demo responses.
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-slate-900/50 rounded-lg p-4">
